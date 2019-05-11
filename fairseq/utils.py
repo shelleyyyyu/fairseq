@@ -283,7 +283,7 @@ def log_softmax(x, dim, onnx_trace=False):
     if onnx_trace:
         return F.log_softmax(x.float(), dim=dim)
     else:
-        return F.log_softmax(x, dim=dim, dtype=torch.float32)
+        return F.log_softmax(x, dim=dim)
 
 
 def deprecation_warning(message, stacklevel=3):

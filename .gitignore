@@ -111,3 +111,5 @@ fairseq/temporal_convolution_tbc
 
 # data
 data-bin/
+examples/roc_story/data_test
+result/roc_story

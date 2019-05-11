@@ -10,7 +10,7 @@ Translate pre-processed data with a trained model.
 """
 
 import torch
-
+import os
 from fairseq import bleu, checkpoint_utils, options, progress_bar, tasks, utils
 from fairseq.meters import StopwatchMeter, TimeMeter
 
@@ -91,6 +91,7 @@ def main(args):
         scorer = bleu.Scorer(tgt_dict.pad(), tgt_dict.eos(), tgt_dict.unk())
     num_sentences = 0
     has_target = True
+    title_array, story_array = [], []
     with progress_bar.build_progress_bar(args, itr) as t:
         wps_meter = TimeMeter()
         for sample in t:
@@ -106,7 +107,6 @@ def main(args):
             hypos = task.inference_step(generator, models, sample, prefix_tokens)
             num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
             gen_timer.stop(num_generated_tokens)
-
             for i, sample_id in enumerate(sample['id'].tolist()):
                 has_target = sample['target'] is not None
 
@@ -130,9 +130,11 @@ def main(args):
 
                 if not args.quiet:
                     if src_dict is not None:
-                        print('S-{}\t{}'.format(sample_id, src_str))
+                        print('{}. Source Sentence - {}'.format(sample_id, src_str))
+                        if sample_id % 5 == 0:
+                            title_array.append([sample_id, src_str])
                     if has_target:
-                        print('T-{}\t{}'.format(sample_id, target_str))
+                        print('{}. Target Sentence - {}'.format(sample_id, target_str))
 
                 # Process top predictions
                 for i, hypo in enumerate(hypos[i][:min(len(hypos), args.nbest)]):
@@ -146,17 +148,13 @@ def main(args):
                     )
 
                     if not args.quiet:
-                        print('H-{}\t{}\t{}'.format(sample_id, hypo['score'], hypo_str))
-                        print('P-{}\t{}'.format(
-                            sample_id,
-                            ' '.join(map(
-                                lambda x: '{:.4f}'.format(x),
-                                hypo['positional_scores'].tolist(),
-                            ))
-                        ))
+                        #print('Hypothesis Sentence - sample_id: {}\thypo[\'score\']: {}\thypo_str: {}'.format(sample_id, hypo['score'], hypo_str))
+                        print('{}. Hypothesis Sentence - {}'.format(sample_id, hypo_str))
+                        story_array.append([sample_id, hypo_str.rstrip()])
+                        #print('Positional_scores: - {}\t{}'.format(sample_id, ' '.join(map( lambda x: '{:.4f}'.format(x), hypo['positional_scores'].tolist(),, hypo_str))))
 
                         if args.print_alignment:
-                            print('A-{}\t{}'.format(
+                            print('print_alignment - {}\t{}'.format(
                                 sample_id,
                                 ' '.join(map(lambda x: str(utils.item(x)), alignment))
                             ))
@@ -174,6 +172,40 @@ def main(args):
             wps_meter.update(num_generated_tokens)
             t.log({'wps': round(wps_meter.avg)})
             num_sentences += sample['nsentences']
+
+
+
+    print("Length of title_array: %d" %(len(title_array)))
+    print("Length of story_array: %d" %(len(story_array)))
+
+    all_story, story = [], []
+
+    def take_sample_id(elem):
+        return elem[0]
+
+    #sort title based on the id
+    title_array.sort(key=take_sample_id)
+    #sort story_array based on the id
+    story_array.sort(key=take_sample_id)
+
+    for index, result in enumerate(story_array):
+        if index % 5 == 4:
+            story.append(result[1])
+            all_story.append(story)
+            story = []
+        else:
+            story.append(result[1])
+    result_dir = args.result_dir
+    path = os.path.join(result_dir,"roc_story_result")
+    print("Result location: %s" %(str(path)))
+    result_file = open(str(path), 'w')
+
+    for story_id, story in enumerate(all_story):
+        result_file.write('['+title_array[story_id][1]+']')
+        for s in story:
+            result_file.write(s.rstrip()+'<split>')
+        result_file.write('\n')
+    result_file.close()
 
     print('| Translated {} sentences ({} tokens) in {:.1f}s ({:.2f} sentences/s, {:.2f} tokens/s)'.format(
         num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
