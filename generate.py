@@ -91,7 +91,7 @@ def main(args):
         scorer = bleu.Scorer(tgt_dict.pad(), tgt_dict.eos(), tgt_dict.unk())
     num_sentences = 0
     has_target = True
-    title_array, story_array = [], []
+    title_array, story_array, story_gt_array = [], [], []
     with progress_bar.build_progress_bar(args, itr) as t:
         wps_meter = TimeMeter()
         for sample in t:
@@ -130,11 +130,14 @@ def main(args):
 
                 if not args.quiet:
                     if src_dict is not None:
-                        print('{}. Source Sentence - {}'.format(sample_id, src_str))
+                        #print('{}. Source Sentence - {}'.format(sample_id, src_str))
                         if sample_id % 5 == 0:
-                            title_array.append([sample_id, src_str])
+                            title_array.append([sample_id, src_str.rstrip()])
                     if has_target:
-                        print('{}. Target Sentence - {}'.format(sample_id, target_str))
+                        #print('{}. Target Sentence - {}'.format(sample_id, target_str))
+                        story_gt_array.append([sample_id, target_str.rstrip()])
+                    else:
+                        print ("NOOOOO TARGETTTT")
 
                 # Process top predictions
                 for i, hypo in enumerate(hypos[i][:min(len(hypos), args.nbest)]):
@@ -149,7 +152,7 @@ def main(args):
 
                     if not args.quiet:
                         #print('Hypothesis Sentence - sample_id: {}\thypo[\'score\']: {}\thypo_str: {}'.format(sample_id, hypo['score'], hypo_str))
-                        print('{}. Hypothesis Sentence - {}'.format(sample_id, hypo_str))
+                        #print('{}. Hypothesis Sentence - {}'.format(sample_id, hypo_str))
                         story_array.append([sample_id, hypo_str.rstrip()])
                         #print('Positional_scores: - {}\t{}'.format(sample_id, ' '.join(map( lambda x: '{:.4f}'.format(x), hypo['positional_scores'].tolist(),, hypo_str))))
 
@@ -178,7 +181,7 @@ def main(args):
     print("Length of title_array: %d" %(len(title_array)))
     print("Length of story_array: %d" %(len(story_array)))
 
-    all_story, story = [], []
+    all_story, all_story_gt, story, story_gt = [], [], [], []
 
     def take_sample_id(elem):
         return elem[0]
@@ -187,6 +190,11 @@ def main(args):
     title_array.sort(key=take_sample_id)
     #sort story_array based on the id
     story_array.sort(key=take_sample_id)
+    #sort story_gt_array based on the id
+    story_gt_array.sort(key=take_sample_id)
+
+
+    #############Story Result File#############
 
     for index, result in enumerate(story_array):
         if index % 5 == 4:
@@ -195,6 +203,8 @@ def main(args):
             story = []
         else:
             story.append(result[1])
+
+
     result_dir = args.result_dir
     path = os.path.join(result_dir,"roc_story_result")
     print("Result location: %s" %(str(path)))
@@ -207,11 +217,37 @@ def main(args):
         result_file.write('\n')
     result_file.close()
 
+    #############Story Ground Truth File#############
+
+    def replaceUNK(string):
+        new_string = string.replace('<<unk>>','<unk>')
+        return new_string
+
+    for index, result in enumerate(story_gt_array):
+        if index % 5 == 4:
+            story_gt.append(replaceUNK(result[1]))
+            all_story_gt.append(story_gt)
+            story_gt = []
+        else:
+            story_gt.append(replaceUNK(result[1]))
+
+    gt_path = os.path.join(result_dir,"roc_story_gt_result")
+    print("Result location: %s" %(str(gt_path)))
+    result_gt_file = open(str(gt_path), 'w')
+
+    for story_id, story in enumerate(all_story_gt):
+        result_gt_file.write('['+title_array[story_id][1]+']')
+        for s in story:
+            result_gt_file.write(s.rstrip()+'<split>')
+        result_gt_file.write('\n')
+    result_gt_file.close()
+
     print('| Translated {} sentences ({} tokens) in {:.1f}s ({:.2f} sentences/s, {:.2f} tokens/s)'.format(
         num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
     if has_target:
         print('| Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
     return scorer
+
 
 
 def cli_main():
