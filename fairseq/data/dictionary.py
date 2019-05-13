@@ -259,7 +259,7 @@ class Dictionary(object):
                 counter.update([eos_word])
                 if f.tell() > end:
                     break
-                line = f.readline()
+                line = f.readline().encode('utf-8').decode('utf-8')
         return counter
 
     @staticmethod
