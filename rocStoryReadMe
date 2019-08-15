@@ -1,0 +1,48 @@
+Hierarchical Neural Story Generation Steps:
+
+1. Git clone project : https://github.com/shelleyyyyu/fairseq.git
+
+2. Create virtual environment : python >= 3.5
+
+3. Download required library/depedencies:
+
+cd fairseq
+pip install --editable .
+
+4. Put Data to corresponding file
+
+
+5. Set TEXT path
+
+export TEXT=examples/roc_story/data
+
+6. Pre-process data
+
+CUDA_VISIBLE_DEVICES=3 fairseq-preprocess --source-lang wp_source --target-lang wp_target \
+  --trainpref $TEXT/train --validpref $TEXT/valid --testpref $TEXT/test \
+  --destdir data-bin/roc_story --padding-factor 1 --thresholdtgt 10 --thresholdsrc 10
+
+CUDA_VISIBLE_DEVICES=2 python ./preprocess.py --source-lang wp_source --target-lang wp_target \
+--trainpref $TEXT/train --validpref $TEXT/valid --testpref $TEXT/test --destdir data-bin/roc_story \
+--padding-factor 1 --thresholdtgt 10 --thresholdsrc 10
+
+7. Train Model
+
+CUDA_VISIBLE_DEVICES=6,1,5 nohup python ./train.py data-bin/roc_story -a fconv_self_att_wp \
+--lr 0.25 --clip-norm 0.1 --max-tokens 1500 --lr-scheduler reduce_lr_on_plateau \
+--decoder-attention True --encoder-attention False --criterion label_smoothed_cross_entropy \
+--weight-decay .0000001 --label-smoothing 0 --source-lang wp_source --target-lang wp_target \
+--gated-attention True --self-attention True --project-input True --pretrained False \
+--max-epoch 20 --save-dir ./checkpoints/roc_story/
+
+8. Generate Story
+
+CUDA_VISIBLE_DEVICES=7,6 nohup python ./generate.py data-bin/roc_story --path ./checkpoints/roc_story/checkpoint_best.pt \
+--batch-size 32 --beam 1 --sampling --sampling-topk 10 --temperature 0.8 --nbest 1 --max-len-b 26 \
+--result_dir ./result/roc_story/
+
+
+
+**When errors encounter:
+
+if show libbleu cannot install on mac machine: MACOSX_DEPLOYMENT_TARGET=10.11

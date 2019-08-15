@@ -113,3 +113,7 @@ fairseq/temporal_convolution_tbc
 data-bin/
 examples/roc_story/data_test
 result/roc_story
+examples/stories/writingPrompts/small_data
+pre-trained models
+examples/roc_story
+examples

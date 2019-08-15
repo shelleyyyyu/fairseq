@@ -10,10 +10,9 @@ Translate pre-processed data with a trained model.
 """
 
 import torch
-import os
 from fairseq import bleu, checkpoint_utils, options, progress_bar, tasks, utils
 from fairseq.meters import StopwatchMeter, TimeMeter
-
+import os
 
 def main(args):
     assert args.path is not None, '--path required for generation!'
@@ -91,7 +90,11 @@ def main(args):
         scorer = bleu.Scorer(tgt_dict.pad(), tgt_dict.eos(), tgt_dict.unk())
     num_sentences = 0
     has_target = True
-    title_array, story_array, story_gt_array = [], [], []
+
+    source_array = []
+    target_array = []
+    generate_array = []
+
     with progress_bar.build_progress_bar(args, itr) as t:
         wps_meter = TimeMeter()
         for sample in t:
@@ -107,6 +110,7 @@ def main(args):
             hypos = task.inference_step(generator, models, sample, prefix_tokens)
             num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
             gen_timer.stop(num_generated_tokens)
+
             for i, sample_id in enumerate(sample['id'].tolist()):
                 has_target = sample['target'] is not None
 
@@ -130,14 +134,11 @@ def main(args):
 
                 if not args.quiet:
                     if src_dict is not None:
-                        #print('{}. Source Sentence - {}'.format(sample_id, src_str))
-                        if sample_id % 5 == 0:
-                            title_array.append([sample_id, src_str.rstrip()])
+                        #print('S-{}\t{}'.format(sample_id, src_str))
+                        source_array.append(src_str)
                     if has_target:
-                        #print('{}. Target Sentence - {}'.format(sample_id, target_str))
-                        story_gt_array.append([sample_id, target_str.rstrip()])
-                    else:
-                        print ("NOOOOO TARGETTTT")
+                        #print('T-{}\t{}'.format(sample_id, target_str))
+                        target_array.append(target_str)
 
                 # Process top predictions
                 for i, hypo in enumerate(hypos[i][:min(len(hypos), args.nbest)]):
@@ -151,13 +152,18 @@ def main(args):
                     )
 
                     if not args.quiet:
-                        #print('Hypothesis Sentence - sample_id: {}\thypo[\'score\']: {}\thypo_str: {}'.format(sample_id, hypo['score'], hypo_str))
-                        #print('{}. Hypothesis Sentence - {}'.format(sample_id, hypo_str))
-                        story_array.append([sample_id, hypo_str.rstrip()])
-                        #print('Positional_scores: - {}\t{}'.format(sample_id, ' '.join(map( lambda x: '{:.4f}'.format(x), hypo['positional_scores'].tolist(),, hypo_str))))
+                        #print('H-{}\t{}\t{}'.format(sample_id, hypo['score'], hypo_str))
+                        generate_array.append(hypo_str)
+                        '''print('P-{}\t{}'.format(
+                            sample_id,
+                            ' '.join(map(
+                                lambda x: '{:.4f}'.format(x),
+                                hypo['positional_scores'].tolist(),
+                            ))
+                        ))'''
 
                         if args.print_alignment:
-                            print('print_alignment - {}\t{}'.format(
+                            print('A-{}\t{}'.format(
                                 sample_id,
                                 ' '.join(map(lambda x: str(utils.item(x)), alignment))
                             ))
@@ -176,71 +182,23 @@ def main(args):
             t.log({'wps': round(wps_meter.avg)})
             num_sentences += sample['nsentences']
 
+    print(len(source_array))
+    print(len(target_array))
+    print(len(generate_array))
 
+    store_file_path = args.result_dir
+    if not os.path.exists(store_file_path):
+        os.makedirs(store_file_path)
 
-    print("Length of title_array: %d" %(len(title_array)))
-    print("Length of story_array: %d" %(len(story_array)))
+    source_file_name = "source.txt"
+    write_to_file(source_array, os.path.join(store_file_path, source_file_name))
 
-    all_story, all_story_gt, story, story_gt = [], [], [], []
+    target_file_name = "target.txt"
+    write_to_file(target_array, os.path.join(store_file_path, target_file_name))
 
-    def take_sample_id(elem):
-        return elem[0]
+    generate_file_name = "generate.txt"
+    write_to_file(generate_array, os.path.join(store_file_path, generate_file_name))
 
-    #sort title based on the id
-    title_array.sort(key=take_sample_id)
-    #sort story_array based on the id
-    story_array.sort(key=take_sample_id)
-    #sort story_gt_array based on the id
-    story_gt_array.sort(key=take_sample_id)
-
-
-    #############Story Result File#############
-
-    for index, result in enumerate(story_array):
-        if index % 5 == 4:
-            story.append(result[1])
-            all_story.append(story)
-            story = []
-        else:
-            story.append(result[1])
-
-
-    result_dir = args.result_dir
-    path = os.path.join(result_dir,"roc_story_result")
-    print("Result location: %s" %(str(path)))
-    result_file = open(str(path), 'w')
-
-    for story_id, story in enumerate(all_story):
-        result_file.write('['+title_array[story_id][1]+']')
-        for s in story:
-            result_file.write(s.rstrip()+'<split>')
-        result_file.write('\n')
-    result_file.close()
-
-    #############Story Ground Truth File#############
-
-    def replaceUNK(string):
-        new_string = string.replace('<<unk>>','<unk>')
-        return new_string
-
-    for index, result in enumerate(story_gt_array):
-        if index % 5 == 4:
-            story_gt.append(replaceUNK(result[1]))
-            all_story_gt.append(story_gt)
-            story_gt = []
-        else:
-            story_gt.append(replaceUNK(result[1]))
-
-    gt_path = os.path.join(result_dir,"roc_story_gt_result")
-    print("Result location: %s" %(str(gt_path)))
-    result_gt_file = open(str(gt_path), 'w')
-
-    for story_id, story in enumerate(all_story_gt):
-        result_gt_file.write('['+title_array[story_id][1]+']')
-        for s in story:
-            result_gt_file.write(s.rstrip()+'<split>')
-        result_gt_file.write('\n')
-    result_gt_file.close()
 
     print('| Translated {} sentences ({} tokens) in {:.1f}s ({:.2f} sentences/s, {:.2f} tokens/s)'.format(
         num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
@@ -248,7 +206,10 @@ def main(args):
         print('| Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
     return scorer
 
-
+def write_to_file(data, filename):
+    with open(filename, 'w') as file:
+        for d in data:
+            file.write(d + '\n')
 
 def cli_main():
     parser = options.get_generation_parser()
